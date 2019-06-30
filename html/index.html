@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<title>index</title>
+<meta charset="UTF-8">
+<script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>
+</head>
+<body>
+<div>X:<span id="xvalue"></span> Y:<span id="yvalue"></span></div>
+<div>L:<span id="lvalue"></span> R:<span id="rvalue"></span> U:<span id="uvalue"></span></div>
+<div id="debug_msg"></div>
+<h1>移動</h1>
+<table>
+    <tr>
+        <td></td>
+        <td><button id="move_up">↑</button></td>
+        <td></td>
+    </tr>
+    <tr>
+        <td><button id="move_left">←</button></td>
+        <td></td>
+        <td><button id="move_right">→</button></td>
+    </tr>
+    <tr>
+        <td></td>
+        <td><button id="move_down">↓</button></td>
+        <td></td>
+    </tr>
+</table>
+<h1>ペン</h1>
+<button id="pen_up">上げる</button>
+<button id="pen_down">下げる</button>
+<h1>左腕</h1>
+<button id="arm_l_uclock">反時計回り</button>
+<button id="arm_l_clock">時計回り</button>
+<h1>右腕</h1>
+<button id="arm_r_uclock">反時計回り</button>
+<button id="arm_r_clock">時計回り</button>
+<h1>その他</h1>
+<button id="backto_zero">原点復帰</button><br>
+<button id="replace_paper">描画エリアリセット(用紙交換)</button>
+<h1>テキスト</h1>
+<input type="text" id="user_text" size="15" maxlength="10">
+<button id="send_text">送信</button>
+
+<script type="text/javascript">
+  var socket = io('192.168.10.17:5000');
+
+  window.onload = function(){
+
+    socket.on('connect', function() {
+        //socket.emit('json', {data: 'I\'m connected!'});
+    });
+
+    var xvalue = document.getElementById("xvalue");
+    var yvalue = document.getElementById("yvalue");
+    var lvalue = document.getElementById("lvalue");
+    var rvalue = document.getElementById("rvalue");
+    var uvalue = document.getElementById("uvalue");
+    var debmsg = document.getElementById("debug_msg");
+
+    socket.on('status', function(str) {
+        obj = JSON.parse(str);
+        xvalue.innerHTML = obj.x;
+        yvalue.innerHTML = obj.y;
+        lvalue.innerHTML = obj.l;
+        rvalue.innerHTML = obj.r;
+        uvalue.innerHTML = obj.u;
+        //document.getElementById("robot_status").innerHTML = str;
+    });
+
+    socket.on('debug', function(str) {
+        debmsg.innerHTML = str;
+    });
+
+    //socket.on('json', function(obj) {
+    //    //document.getElementById("robot_status").innerHTML = json.x + ' ' + json.y + ' ' + json.z;
+    //    //console.log(JSON.stringify(json));
+    //    console.log('json= ' + obj.x + ' ' + obj.y + ' ' + obj.z);
+    //});
+
+    //ロボットは紙の下側に配置するのでXYの符号が逆になる
+    document.getElementById("move_up").onclick = function() {
+        socket.emit('json', {cmd: 'y+1'});
+    };
+    document.getElementById("move_down").onclick = function() {
+        socket.emit('json', {cmd: 'y-1'});
+    };
+    document.getElementById("move_left").onclick = function() {
+        socket.emit('json', {cmd: 'x+1'});
+    };
+    document.getElementById("move_right").onclick = function() {
+        socket.emit('json', {cmd: 'x-1'});
+    };
+
+    document.getElementById("pen_up").onclick = function() {
+        socket.emit('json', {cmd: 'w0'});
+    };
+    document.getElementById("pen_down").onclick = function() {
+        socket.emit('json', {cmd: 'w1'});
+    };
+
+    document.getElementById("arm_l_uclock").onclick = function() {
+        socket.emit('json', {cmd: 'l+1'});
+    };
+    document.getElementById("arm_l_clock").onclick = function() {
+        socket.emit('json', {cmd: 'l-1'});
+    };
+    document.getElementById("arm_r_uclock").onclick = function() {
+        socket.emit('json', {cmd: 'r+1'});
+    };
+    document.getElementById("arm_r_clock").onclick = function() {
+        socket.emit('json', {cmd: 'r-1'});
+    };
+
+    document.getElementById("backto_zero").onclick = function() {
+        socket.emit('json', {cmd: 'g'});
+    };
+    document.getElementById("replace_paper").onclick = function() {
+        socket.emit('json', {cmd: 'c'});
+    };
+
+    document.getElementById("send_text").onclick = function() {
+        tb = document.getElementById("user_text");
+        socket.emit('json', {cmd: 't' + tb.value});
+    };
+  }
+</script>
+</body>
+</html>
