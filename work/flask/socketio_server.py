@@ -20,7 +20,7 @@ class ThreadJob(threading.Thread):
   abort_task = False
   task_running = False
   vectors = []
-  send_vector = 0 # 0:None 1:NeedToSend 2:WaitFor"END"
+  send_vector = 0 # 0:None 1:NeedToSend 2:WaitFor"end"
 
   def __init__(self, ser, socketio):
     threading.Thread.__init__(self)
@@ -29,34 +29,47 @@ class ThreadJob(threading.Thread):
 
   def run(self):
     self.task_running = True
+
+    #j:information by json format
+    #sn,sf:adjust pen height for write
+    self.ser.write("j\nsn76\nsf83".encode('ascii'))
+
     write_count = 0
+    write_total = 0
     try:
       while self.abort_task == False:
         #Read from serial
-        s = self.ser.readline()
+        s = self.ser.readline().strip()
         if len(s) > 0:
-          if s[0] == "{":
+          if s[0] == "{": #information from Arduino
             self.socketio.emit('status', s)
-          else:
-            if s[0] == 'E' and s[1] == 'N' and s[2] == 'D':
-              if len(self.vectors) > 0:
-                self.send_vector = 1
-                print "CONTINUE"
-              else:
-                self.send_vector = 0
-                print "END ALL"
+          elif s == "start":
+            print "START"
+          elif s == "end":
+            if len(self.vectors) > 0:
+              self.send_vector = 1
+              print "CONTINUE"
             else:
-              print "Read > " + s
+              self.send_vector = 0
+              print "END ALL"
+          elif s == "align":
+            print "BACK To ALIGIN"
+          else:
+            print "Unknown reply > " + s
         #Send to serial
         if self.send_vector == 1:
-          if write_count >= 100 or len(self.vectors) == 0:
-              self.send_vector = 2
-              write_count = 0
-              self.ser.write("G\n".encode('ascii'))
-          else:
-            vu = self.vectors.pop(0)
-            self.ser.write((vu.toCommand() + "\n").encode('ascii'))
-            write_count += 1
+          if write_count == 0:
+            write_total = len(self.vectors)
+            if write_total > 100:
+              write_total = 100
+            self.ser.write(("N" + str(write_total) + "\n").encode('ascii'))
+          vu = self.vectors.pop(0)
+          self.ser.write((vu.toCommand() + "\n").encode('ascii'))
+          write_count += 1
+          if write_total == write_count:
+            self.send_vector = 2
+            write_count = 0
+            self.ser.write("G\n".encode('ascii'))
     except:
       import traceback
       traceback.print_exc()
@@ -69,7 +82,7 @@ class ThreadJob(threading.Thread):
 if use_serial:
   ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0.1)
 
-vfl = VectorFontLoader.VectorFontLoader("font.dict", "font.vector")
+vfl = VectorFontLoader.VectorFontLoader("a.dict2", "a.vect2")
 
 wroteRectangles = []
 writableArea = Polygon([
@@ -116,35 +129,38 @@ def handle_json(json):
     #tの後に続く文字列を書く
     text = json['cmd'][1:]
     if len(text) > 0:
-      result = vfl.getVectorArrayFromText(text)
-      va = result[0] #VectorArray
-      w = result[1]  #width
-      h = result[2]  #height
-      if w <= 0:
+      va = vfl.getVectorArrayFromText(text)
+      if va.count() <= 0:
         socketio.emit('debug', 'nothing to draw')
       else:
+        #remove extra margin
+        bound = va.getBound()
+        va.offset(-bound[0], -bound[1])
+        width = bound[2] - bound[0] + 1
+        height = bound[3] - bound[1] + 1
+
+        #font standard height is 1.0.
+        #but now height is slightly smaller than 1.0,
+        #because extra margin removed.
+
         #描画位置をランダムに決定
         x = (writableArea.xmax - writableArea.xmin) * random.random() + writableArea.xmin
         y = (writableArea.ymax - writableArea.ymin) * random.random() + writableArea.ymin
         #倍率をランダムに決定
-        if 30 / h < 100 / w:
-          scale = 30 / h
-        else:
-          scale = 100 / w
-        scale = (2.0 - random.random()) / 2.0 * scale
+        scale = random.random() * 20.0 + 10.0 #height 10-30mm
 
-        rc = writableArea.findFreeSpace(x, y, w * scale, h * scale, wroteRectangles)
+        rc = writableArea.findFreeSpace(x, y, width * scale, height * scale, wroteRectangles)
         while rc == None:
-          scale *= 0.8
-          if scale < 0.025:
+          scale *= 0.8     #scale 80% when no space
+          if scale < 10.0: #minimum 10mm height
             break
-          rc = writableArea.findFreeSpace(x, y, w * scale, h * scale, wroteRectangles)
+          rc = writableArea.findFreeSpace(x, y, width * scale, height * scale, wroteRectangles)
 
-        if scale < 0.025:
+        if scale < 10.0:
           socketio.emit('debug', 'no space for draw')
         else:
           #スレッドにベクトルを渡す
-          print "draw size " + str(w * scale) + " x " + str(h * scale)
+          print "draw size " + str(width * scale) + " x " + str(height * scale)
           va.scale(scale, scale)
           va.offset(rc.x, rc.y)
           for vu in va.ar:
@@ -167,7 +183,7 @@ if __name__ == '__main__':
   if use_serial:
     t.start()
 
-  socketio.run(app, host='0.0.0.0', port=5000)
+  socketio.run(app, host = '0.0.0.0', port = 5000)
 
   if use_serial:
     t.abort_task = True
