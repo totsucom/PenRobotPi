@@ -3,130 +3,448 @@
 <head>
 <title>index</title>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js" integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>
 </head>
 <body>
-<div>X:<span id="xvalue"></span> Y:<span id="yvalue"></span> PEN:<span id="penstat"></span></div>
-<div>L:<span id="lvalue"></span> R:<span id="rvalue"></span> U:<span id="uvalue"></span></div>
-<div id="debug_msg"></div>
-<h1>移動</h1>
-<table>
-    <tr>
-        <td></td>
-        <td><button id="move_up">↑</button></td>
-        <td></td>
-    </tr>
-    <tr>
-        <td><button id="move_left">←</button></td>
-        <td></td>
-        <td><button id="move_right">→</button></td>
-    </tr>
-    <tr>
-        <td></td>
-        <td><button id="move_down">↓</button></td>
-        <td></td>
-    </tr>
-</table>
-<h1>ペン</h1>
-<button id="pen_up">上げる</button>
-<button id="pen_down">下げる</button>
-<h1>左腕</h1>
-<button id="arm_l_uclock">反時計回り</button>
-<button id="arm_l_clock">時計回り</button>
-<h1>右腕</h1>
-<button id="arm_r_uclock">反時計回り</button>
-<button id="arm_r_clock">時計回り</button>
-<h1>その他</h1>
-<button id="backto_zero">原点復帰</button><br>
-<button id="replace_paper">描画エリアリセット(用紙交換)</button>
-<h1>テキスト</h1>
-<input type="text" id="user_text" size="15" maxlength="10">
-<button id="send_text">送信</button>
+<div>ロボットの状態 <span id="status"></span></div>
+<div>
+    <label><input type="radio" name="pen" id="pen_move" checked>移動のみ</label>
+    <label><input type="radio" name="pen" id="draw_on_drag">ドラッグ中に書く</label>
+    <label><input type="radio" name="pen" id="draw_always">ドラッグ中も移動中も書く</label>
+</div>
+<div>
+    <canvas id="canvas" style="border:solid black 1px"></canvas>
+    <canvas id="cursor" style="display: none"></canvas>
+</div>
+<div>メッセージ <input type="text" id="message" size="30" maxlength="20"><input type="button" id="sendtext" value="書く"></div>
+<br>
+<br>
+<br>
+<div>
+    <input type="button" id="align" value="原点復帰">
+    <input type="button" id="clear" value="クリア（紙交換）">
+</div>
 
 <script type="text/javascript">
-  var socket = io('<?php echo $_SERVER['SERVER_ADDR']; ?>:5000');
 
-  window.onload = function(){
-
-    socket.on('connect', function() {
-        //socket.emit('json', {data: 'I\'m connected!'});
-    });
-
-    var xvalue = document.getElementById("xvalue");
-    var yvalue = document.getElementById("yvalue");
-    var lvalue = document.getElementById("lvalue");
-    var rvalue = document.getElementById("rvalue");
-    var uvalue = document.getElementById("uvalue");
-    var penstat = document.getElementById("penstat");
-    var debmsg = document.getElementById("debug_msg");
-
-    socket.on('status', function(str) {
-        obj = JSON.parse(str);
-        xvalue.innerHTML = obj.X;
-        yvalue.innerHTML = obj.Y;
-        lvalue.innerHTML = obj.L;
-        rvalue.innerHTML = obj.R;
-        uvalue.innerHTML = obj.U;
-        penstat.innerHTML = obj.PEN;
-        //document.getElementById("robot_status").innerHTML = str;
-    });
-
-    socket.on('debug', function(str) {
-        debmsg.innerHTML = str;
-    });
-
-    //socket.on('json', function(obj) {
-    //    //document.getElementById("robot_status").innerHTML = json.x + ' ' + json.y + ' ' + json.z;
-    //    //console.log(JSON.stringify(json));
-    //    console.log('json= ' + obj.x + ' ' + obj.y + ' ' + obj.z);
-    //});
-
-    //ロボットは紙の下側に配置するのでXYの符号が逆になる
-    document.getElementById("move_up").onclick = function() {
-        socket.emit('json', {cmd: 'y+1'});
-    };
-    document.getElementById("move_down").onclick = function() {
-        socket.emit('json', {cmd: 'y-1'});
-    };
-    document.getElementById("move_left").onclick = function() {
-        socket.emit('json', {cmd: 'x+1'});
-    };
-    document.getElementById("move_right").onclick = function() {
-        socket.emit('json', {cmd: 'x-1'});
+    //BASE64デコード
+    var Base64a = {
+        decode: (function(i, tbl) {
+            for(i=0,tbl={61:64,47:63,43:62}; i<62; i++) {tbl[i<26?i+65:(i<52?i+71:i-4)]=i;} //A-Za-z0-9+/=
+            return function(str) {
+                var j, len, arr, buf;
+                if (!str || !str.length) {return [];}
+                for(i=0,len=str.length,arr=[],buf=[]; i<len; i+=4) { //6,2+4,4+2,6
+                    for(j=0; j<4; j++) {buf[j] = tbl[str.charCodeAt(i+j)||0];}
+                    arr.push(
+                        buf[0]<<2|(buf[1]&63)>>>4,
+                        (buf[1]&15)<<4|(buf[2]&63)>>>2,
+                        (buf[2]&3)<<6|buf[3]&63
+                    );
+                }
+                if (buf[3]===64) {arr.pop();if (buf[2]===64) {arr.pop();}}
+                return arr;
+            };
+        }())
     };
 
-    document.getElementById("pen_up").onclick = function() {
-        socket.emit('json', {cmd: 'up'});
-    };
-    document.getElementById("pen_down").onclick = function() {
-        socket.emit('json', {cmd: 'dn'});
-    };
+    //キャンバス上のマウス座標を取得
+    function getMousePosition(canvas, evt) {
+        var rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top,
+            lb: evt.buttons & 1
+        };
+    }
 
-    document.getElementById("arm_l_uclock").onclick = function() {
-        socket.emit('json', {cmd: 'l+1'});
-    };
-    document.getElementById("arm_l_clock").onclick = function() {
-        socket.emit('json', {cmd: 'l-1'});
-    };
-    document.getElementById("arm_r_uclock").onclick = function() {
-        socket.emit('json', {cmd: 'r+1'});
-    };
-    document.getElementById("arm_r_clock").onclick = function() {
-        socket.emit('json', {cmd: 'r-1'});
-    };
+    //キャンバス上のタッチ座標を取得（スマホ）
+    function getTouchPosition(canvas, evt) {
+        var tx, ty;
+        if (event.touches && event.touches[0]) {
+            tx = event.touches[0].clientX;
+            ty = event.touches[0].clientY;
+        } else if (event.originalEvent && event.originalEvent.changedTouches[0]) {
+            tx = event.originalEvent.changedTouches[0].clientX;
+            ty = event.originalEvent.changedTouches[0].clientY;
+        } else if (event.clientX && event.clientY) {
+            tx = event.clientX;
+            ty = event.clientY;
+        }
+/*        if (evt.touches.length != 1) {
+            return undefined;
+        }
+        var tx = Math.round(evt.touches[0].pageX);
+        var ty = Math.round(evt.touches[0].pageY);
+*/
+        var rect = canvas.getBoundingClientRect();
+        if (tx < rect.left || tx >= rect.right || ty < rect.top || ty >= rect.bottom) {
+            return undefined;
+        }
+        return {
+            x: tx - rect.left,
+            y: ty - rect.top
+        };
+    }
 
-    document.getElementById("backto_zero").onclick = function() {
-        socket.emit('json', {cmd: 'g'});
-    };
-    document.getElementById("replace_paper").onclick = function() {
-        socket.emit('json', {cmd: 'c'});
-    };
+    //SocketIO
+    var socket = io('<?php echo $_SERVER['SERVER_ADDR']; ?>:5000');
 
-    document.getElementById("send_text").onclick = function() {
-        tb = document.getElementById("user_text");
-        socket.emit('json', {cmd: 't' + tb.value});
-    };
-  }
+    window.onload = function(){
+
+        //キャンバスを操作する変数
+        var canvas = document.getElementById('canvas');
+        var image_data; //更新頻度が多いのでベースの画像データを保持
+        var canvas_cx = 0;
+        var canvas_cy = 0;
+        var canvas_scale = 3;
+        var canvas_margin = 10;
+
+        //ペンの位置を表す画像を保持
+        var cursor = document.getElementById('cursor');
+        var cursor_size = 7;
+        var cursor_cx = parseInt(cursor_size / 2);
+        var cursor_cy = parseInt(cursor_size / 2);
+        var cursor_image_x = undefined; //カーソルイメージを貼り付けたcanvas上の座標
+        var cursor_image_y = undefined;
+
+        //ロボットの状態を表示するspan
+        var status = document.getElementById("status");
+
+        //現在のペンの位置を保持（SocketIOで受信した位置）
+        var current_x = 0;
+        var current_y = 0;
+
+        //ボタン
+        var draw_on_drag_radio = document.getElementById("draw_on_drag");
+        var draw_always_radio = document.getElementById("draw_always");
+        var sendtext_button = document.getElementById("sendtext");
+        var align_button = document.getElementById("align");
+        var clear_button = document.getElementById("clear");
+
+
+        //初期化コード
+        (function(){
+            //カーソル作成
+            var ctx = cursor.getContext('2d');
+            var image_data = ctx.createImageData(cursor_size, cursor_size);
+            var a = image_data.data;
+            var n = cursor_size * cursor_size;
+            var di = 3;
+            while(n-- > 0) {
+                a[di] = 0;//背景透明
+                di += 4;
+            }
+            //カーソルの×印を描画
+            ctx.putImageData(image_data ,0 ,0);
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+            ctx.lineWidth = canvas_scale;
+            ctx.moveTo(0, 0);
+            ctx.lineTo(cursor_size - 1, cursor_size - 1);
+            ctx.moveTo(0, cursor_size - 1);
+            ctx.lineTo(cursor_size - 1, 0);
+            ctx.closePath();
+            ctx.stroke();
+        })();
+
+        //ラズパイからSoketIOでJSONデータを受信
+        socket.on('json', function(json) {
+            //console.log(json_string);
+            //json = JSON.parse(json_string);
+
+            if (json.image != undefined) {
+
+                //拡大したキャンバスを作成
+                canvas.width = json.width * canvas_scale + canvas_margin * 2;
+                canvas.height = json.height * canvas_scale + canvas_margin * 2;
+                canvas_cx = json.cx * canvas_scale + canvas_margin;
+                canvas_cy = json.cy * canvas_scale + canvas_margin;
+
+                var ctx = canvas.getContext('2d');
+                ctx.beginPath();
+                ctx.fillStyle = "rgb(0, 0, 0)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                //境界線を描く
+                var bound = [0, 36.85,  25.38, 35.32,  47.47, 27.07,  47.81, 57.74,  37.69, 84.93,  16.12, 103.95,  0, 112.12,  -16.47, 107.47,  -34.24, 97.21,  -55.76, 66.84,  -60.64, 36.11,  -54.13, 9.53];
+                ctx.strokeStyle = 'rgb(0, 255, 0)';
+                ctx.lineWidth = 1;
+                let i = bound.length - 2;
+                ctx.moveTo(bound[i] * canvas_scale + canvas_cx, bound[i + 1] * canvas_scale + canvas_cy);
+                for(let i = 0; i < bound.length; i += 2) {
+                    ctx.lineTo(bound[i] * canvas_scale + canvas_cx, bound[i + 1] * canvas_scale + canvas_cy);
+                }
+
+                //ビットデータの復元(window.btoa()ではダメ)
+                var bs = Base64a.decode(json.image);
+
+                //ピクセルの復元
+                ctx.fillStyle = "rgb(255, 255, 255)";
+                var si = 0;
+                for (var y=0; y<json.height; y++) {
+                    for (var x=0; x<json.width; x++) {
+                        if (bs[si++] != 0) {
+                            ctx.fillRect(
+                                x * canvas_scale + canvas_margin,
+                                y * canvas_scale + canvas_margin,
+                                canvas_scale,
+                                canvas_scale);
+                        }
+                    }
+                }
+                ctx.closePath();
+                ctx.stroke();
+
+                //キャンバスイメージデータの保存
+                image_data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                //カーソルは現時点で非表示
+                cursor_image_x = undefined;
+                cursor_image_y = undefined;
+
+                //初期位置
+                if (json.x != undefined) {
+                    cur_rx0 = json.x;
+                    cur_ry0 = json.y;
+                }
+
+/*
+                //キャンバスイメージデータの取得
+                image_data = context.createImageData(json.width * canvas_scale, json.height * canvas_scale); //初期値は透明な黒
+
+                //データ変換 RGB=>RGBA
+                var a = image_data.data;
+                var n = json.width * json.height;
+                var si = 0;
+                var di = 0;
+                while(n-- > 0) {
+                    a[di++] = bs[si++];
+                    a[di++] = bs[si++];
+                    a[di++] = bs[si++];
+                    a[di++] = 255;
+                }
+
+                //キャンバスに反映。image_dataは保持しておく
+                context.putImageData(image_data ,0 ,0);
+                canvas.width = json.width;
+                canvas.height = json.height;
+                canvas_cx = json.cx;
+                canvas_cy = json.cy;
+*/
+                //console.log('image ' + json.width + 'x' + json.height + ' center(' + canvas_cx + ',' + canvas_cy + ')');
+            } else {
+                console.log(JSON.stringify(json));
+            }
+            if (json.status != undefined) {
+                status.innerHTML = json.status;
+            }
+            if (json.x != undefined) {
+                var ctx = canvas.getContext('2d');
+                if (image_data == undefined) {
+                    //キャンバスイメージデータの保存
+                    image_data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                }
+                if (cursor_image_x != undefined) {
+                    //前回のカーソル描画位置の画像を復帰
+                    ctx.putImageData(image_data ,0 ,0, cursor_image_x, cursor_image_y, cursor_size + 1, cursor_size + 1);
+                }
+                //カーソル描画
+                cursor_image_x = json.x * canvas_scale + canvas_cx - cursor_cx;
+                cursor_image_y = json.y * canvas_scale + canvas_cy - cursor_cy;
+                ctx.drawImage(cursor, cursor_image_x, cursor_image_y);
+                current_x = json.x;
+                current_y = json.y;
+            }
+            if (json.x1 != undefined) {
+                var ctx = canvas.getContext('2d');
+                if (cursor_image_x != undefined) {
+                    //前回のカーソル描画位置の画像を復帰
+                    ctx.putImageData(image_data ,0 ,0, cursor_image_x, cursor_image_y, cursor_size + 1, cursor_size + 1);
+                }
+                //線を描画
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgb(255, 255, 255)';
+                ctx.lineWidth = canvas_scale;
+                ctx.moveTo(json.x1 * canvas_scale + canvas_cx, json.y1 * canvas_scale + canvas_cy);
+                ctx.lineTo(json.x2 * canvas_scale + canvas_cx, json.y2 * canvas_scale + canvas_cy);
+                ctx.closePath();
+                ctx.stroke();
+
+                //カーソル描画をやめて、毎回イメージデータの保存をやめた(処理重い)。必要な時に実行
+                image_data = undefined;
+                cursor_image_x = undefined;
+                cursor_image_y = undefined;
+
+                current_x = json.x2;
+                current_y = json.y2;
+            }
+        });
+
+        //マウスの移動距離(キャンバス座標ベース)を管理
+        var pos_x0 = 0, pos_y0 = 0;
+
+        //サーバーにまとめて命令を送る
+        var commands = [];
+        var timer_id = -1;
+
+        //マウスボタンが押された
+        canvas.addEventListener('mousedown', function (evt) {
+            var pos = getMousePosition(canvas, evt);    //座標取得
+            pos_x0 = pos.x;
+            pos_y0 = pos.y;
+            commands = [];
+            moveto(pos.x, pos.y, true); //移動のみ
+        }, false);
+
+        //スマホはtouchendイベントで座標をとれないので、ここに記憶
+        var last_touch_pos_x, last_touch_pos_y;
+
+        //スマホでタッチされた
+        canvas.addEventListener('touchstart', function (evt) {
+            var pos = getTouchPosition(canvas, evt);    //座標取得
+            if (pos == undefined) return;
+            pos_x0 = pos.x;
+            pos_y0 = pos.y;
+            commands = [];
+            moveto(pos.x, pos.y, true); //移動のみ
+            last_touch_pos_x = pos.x;
+            last_touch_pos_y = pos.y;
+        }, false);
+
+        //マウスが移動した
+        canvas.addEventListener('mousemove', function (evt) {
+            var pos = getMousePosition(canvas, evt);    //座標取得
+            if (pos.lb == 0) return;
+            mouseMoveProcess(pos);
+        }, false);
+
+        //スマホでタッチしたまま移動した
+        canvas.addEventListener('touchmove', function (evt) {
+            var pos = getTouchPosition(canvas, evt);    //座標取得
+            if (pos == undefined) return;
+            event.preventDefault(); // タッチによる画面スクロールを止める
+            mouseMoveProcess(pos);
+            last_touch_pos_x = pos.x;
+            last_touch_pos_y = pos.y;
+        }, false);
+
+        function mouseMoveProcess(pos){
+            //更新頻度を下げるため、移動距離で判定
+            var dist = Math.sqrt((pos.x - pos_x0) * (pos.x - pos_x0) + (pos.y - pos_y0) * (pos.y - pos_y0));
+            if (dist >= 5.0) {
+                moveto(pos.x, pos.y, false);
+                pos_x0 = pos.x;
+                pos_y0 = pos.y;
+
+                if (timer_id == -1) {
+                    //0.2秒後にemitするタイマーをセット
+                    timer_id = setTimeout(() => {
+                        //データがあればemit()
+                        if (commands.length > 0) {
+                            socket.emit('json', {ar: commands});
+                            commands = [];
+                        }
+                        timer_id = -1;
+                    }, 200);
+                }
+            }
+        }
+
+        //マウスボタンが離された
+        canvas.addEventListener('mouseup', function (evt) {
+            var pos = getMousePosition(canvas, evt);    //座標取得
+            mouseButtonUpProcess(pos);
+        }, false);
+
+        //スマホでタッチが離された
+        canvas.addEventListener('touchend', function (evt) {
+            mouseButtonUpProcess({x:last_touch_pos_x, y:last_touch_pos_y});
+        }, false);
+
+        function mouseButtonUpProcess(pos) {
+            //送信タイマーを終了させる
+            if (timer_id != -1) {
+                clearTimeout(timer_id);
+                timer_id = -1;
+            }
+            if (pos_x0 != pos.x || pos_y0 != pos.y) {
+                moveto(pos.x, pos.y, false);
+            }
+            //データがあればemit()
+            if (commands.length > 0) {
+                socket.emit('json', {ar: commands});
+                commands = [];
+            }
+        }
+
+        //moveto,linetoの座標（ロボット座標ベース）を管理
+        var cur_rx0 = 0, cur_ry0 = 0;
+
+        //x,y キャンバス座標
+        function moveto(x, y, moveOnly) {
+            var rx = (x - canvas_cx) / canvas_scale; //ロボット座標
+            var ry = (y - canvas_cy) / canvas_scale;
+
+            if (draw_always_radio.checked || (!moveOnly && draw_on_drag_radio.checked)) {
+                var ctx = canvas.getContext('2d');
+
+                //命令をバッファに追加
+                commands.push({x1: cur_rx0, y1: cur_ry0, x2: rx, y2: ry});
+                //socket.emit('json', {x1: cur_rx0, y1: cur_ry0, x2: rx, y2: ry});
+
+                if (cursor_image_x != undefined) {
+                    //前回のカーソル描画位置の画像を復帰
+                    ctx.putImageData(image_data ,0 ,0, cursor_image_x, cursor_image_y, cursor_size + 1, cursor_size + 1);
+                }
+
+                //線を描く
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgb(255, 255, 255)';
+                ctx.lineWidth = canvas_scale;
+                ctx.moveTo(cur_rx0 * canvas_scale + canvas_cx, cur_ry0 * canvas_scale + canvas_cy);
+                ctx.lineTo(x, y);
+                ctx.closePath();
+                ctx.stroke();
+
+                //カーソル描画をやめて、毎回イメージデータの保存をやめた(処理重い)。必要な時に実行
+                image_data = undefined;
+                cursor_image_x = undefined;
+                cursor_image_y = undefined;
+            } else {
+                //命令をバッファに追加
+                commands.push({x: rx, y: ry});
+                //socket.emit('json', {x: rx, y: ry});
+                //context.putImageData(image_data ,0 ,0);         //主画像復帰
+            }
+            //cs = parseInt(cursor_size / 2);
+            //context.drawImage(cursor, x - cs, y - cs);  //カーソル合成
+            cur_rx0 = rx;
+            cur_ry0 = ry;
+        }
+
+
+
+        //（文字を）書く
+        sendtext_button.addEventListener('click', function () {
+            var tbox = document.getElementById("message");
+            var text = tbox.value;
+            socket.emit('json', {text: text});
+            tbox.value = "";
+        });
+
+        //原点復帰
+        align_button.addEventListener('click', function () {
+            socket.emit('json', {align: 0});
+        });
+
+        //クリア（紙交換）
+        clear_button.addEventListener('click', function () {
+            socket.emit('json', {clear: 0});
+        });
+    }
 </script>
+
 </body>
 </html>
